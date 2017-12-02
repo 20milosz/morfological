@@ -36,7 +36,7 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 
 	int column = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-
+	//
 //	__shared__ int dilTile[blockD*blockD];
 
 	if (column < A.numColumns && row < A.numRows)
