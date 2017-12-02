@@ -38,7 +38,7 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
 	//
 	__shared__ int dilTile[(blockD+strucElDim-1)*(blockD+strucElDim-1)];
-
+	
 
 
 	int subMatrix[strucElDim*strucElDim];

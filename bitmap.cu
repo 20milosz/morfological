@@ -108,6 +108,7 @@ int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 }*/
 
 int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
+	//najpierw robiê taki obraz aby jego rozmiar by³ wielokrotnoœcia blockD, nastêpnie dodaje krawêdzie o szerokoœci structElDim/2
 	//int16_t status = initializeMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width);
 	int height = bitmap_in->hp->height;
 	int width = bitmap_in->hp->width;
