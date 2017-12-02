@@ -37,45 +37,43 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 	int column = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
 	//
-//	__shared__ int dilTile[blockD*blockD];
+	__shared__ int dilTile[(blockD+strucElDim-1)*(blockD+strucElDim-1)];
 
-	if (column < A.numColumns && row < A.numRows)
+
+
+	int subMatrix[strucElDim*strucElDim];
+	for (int i = 0; i < strucElDim*strucElDim; i++)
 	{
+		subMatrix[i] = 0;
+	}
+	int index;
+	int CValue;
 
+	index = row * A.numColumns + column;
+	CValue = 0;
 
-		int subMatrix[strucElDim*strucElDim];
-		for (int i = 0; i < strucElDim*strucElDim; i++)
+	for (int i = 0; i < strucElDim; i++)
+	{
+		for (int j = 0; j < strucElDim; j++)
 		{
-			subMatrix[i] = 0;
-		}
-		int index;
-		int CValue;
-
-		index = row * A.numColumns + column;
-		CValue = 0;
-
-		for (int i = 0; i < strucElDim; i++)
-		{
-			for (int j = 0; j < strucElDim; j++)
+			if ((column - j >= strucElDim / 2) && (row - i >= strucElDim / 2) && (column + j <= A.numColumns - strucElDim / 2) && (row + i <= A.numRows - strucElDim / 2))
 			{
-				if ((column - j >= strucElDim / 2) && (row - i >= strucElDim / 2) && (column + j <= A.numColumns - strucElDim / 2) && (row + i <= A.numRows - strucElDim / 2))
-				{
-					subMatrix[j + strucElDim * i] = A.elements[index + j - strucElDim / 2 + (i - strucElDim / 2)*A.numColumns];
-				}
-				else
-				{
-					subMatrix[j + strucElDim * i] = 0;
-				}
+				subMatrix[j + strucElDim * i] = A.elements[index + j - strucElDim / 2 + (i - strucElDim / 2)*A.numColumns];
+			}
+			else
+			{
+				subMatrix[j + strucElDim * i] = 0;
 			}
 		}
-
-		for (int i = 0; i < strucElDim*strucElDim; i++)
-		{
-			if (structuringElements[i] * subMatrix[i] == 1)
-				CValue = 1;
-		}
-		result.elements[index] = CValue;
 	}
+
+	for (int i = 0; i < strucElDim*strucElDim; i++)
+	{
+		if (structuringElements[i] * subMatrix[i] == 1)
+			CValue = 1;
+	}
+	result.elements[index] = CValue;
+	
 }
 
 
@@ -93,7 +91,7 @@ Matrix* dilatation(Matrix A, Matrix structuringElement)
 	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyHostToDevice));
 
 	dim3 threads(blockD, blockD);
-	dim3 grid((A.numColumns + threads.x - 1) / threads.x, (A.numRows + threads.y - 1) / threads.y);
+	dim3 grid(A.numColumns / blockD, A.numRows / blockD);
 	dilatation_cuda <<<grid, threads >>> (d_A, d_result);
 	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyDeviceToHost));
 	checkCudaErrors(cudaFree(d_A.elements));

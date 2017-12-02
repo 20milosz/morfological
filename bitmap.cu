@@ -134,7 +134,7 @@ int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 			for (j = 0; j < bitmap_in->hp->height; j++)
 			{
 				idxbitmap = i + bitmap_in->hp->width*j;
-				idxmatrix = i+1 + width*(j+1);
+				idxmatrix = i+strucElDim/2 + width*(j+strucElDim/2);
 				if (bitmap_in->image[idxbitmap].r < 170) {
 				mat_out->elements[idxmatrix] = 1;
 			}
