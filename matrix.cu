@@ -5,6 +5,7 @@
 #include "device_launch_parameters.h"
 
 
+
 void createHostMatrix(Matrix *matrix, int numRows, int numColums, int size)
 {
 	matrix->numRows = numRows;

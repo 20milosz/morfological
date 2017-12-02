@@ -140,20 +140,42 @@ Matrix* erosion(Matrix A, Matrix structuringElement)
 	return result;
 }
 
+__global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
+{
+	int column = threadIdx.x + blockIdx.x*blockDim.x;
+	int row = threadIdx.y + blockIdx.y*blockDim.y;
+	if (column < A.numColumns && row < A.numRows)
+	{
+		int index = row * A.numColumns + column;
+		result.elements[index] = A.elements[index] * B.elements[index];
+
+	}
+
+}
+
+
 Matrix* complement(Matrix A, Matrix B)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
 	verifyHostAllocation(*result);
-	int index;
-	for (int row = 0; row < A.numRows; row++)
-	{
-		for (int column = 0; column < A.numColumns; column++)
-		{
-			index = row * A.numColumns + column;
-			result->elements[index] = A.elements[index] * B.elements[index];
-		}
-	}
+	Matrix d_A;
+	Matrix d_B;
+	Matrix d_result;
+	createDeviceMatrix(&d_A, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
+	createDeviceMatrix(&d_B, B.numRows, B.numColumns, B.numColumns*B.numRows * sizeof(int));
+	createDeviceMatrix(&d_result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
+	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_B.elements, B.elements, B.numColumns*B.numRows * sizeof(int), cudaMemcpyHostToDevice));
+
+	dim3 threads(blockD + strucElDim - 1, blockD + strucElDim - 1);
+	dim3 grid((A.numColumns + threads.x-1) / threads.x, (A.numRows+threads.y-1) / threads.y);
+	complement_cuda << <grid, threads >> > (d_A, d_B, d_result);
+	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyDeviceToHost));
+	checkCudaErrors(cudaFree(d_A.elements));
+	checkCudaErrors(cudaFree(d_B.elements));
+	checkCudaErrors(cudaFree(d_result.elements));
+
 	return result;
 }
 
@@ -215,6 +237,46 @@ int checkIfEqual(Matrix A, Matrix B)
 	return isEqual;
 }
 
+Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
+{
+	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
+	createHostMatrix(result, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(int));
+
+	Matrix d_mask;
+	Matrix d_marker1;
+	Matrix d_marker2;
+	Matrix d_resultDil;
+	createDeviceMatrix(&d_mask, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(int));
+	createDeviceMatrix(&d_marker1, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(int));
+	createDeviceMatrix(&d_marker2, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(int));
+	createDeviceMatrix(&d_resultDil, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(int));
+	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(int), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_marker1.elements, marker.elements, mask.numColumns*mask.numRows * sizeof(int), cudaMemcpyHostToDevice));
+	dim3 threadsDil(blockD + strucElDim - 1, blockD + strucElDim - 1);
+	dim3 gridDil(mask.numColumns / blockD, mask.numRows / blockD);
+	dim3 threadsComp(blockD + strucElDim - 1, blockD + strucElDim - 1);
+	dim3 gridComp((mask.numColumns + threadsComp.x - 1) / threadsComp.x, (mask.numRows + threadsComp.y - 1) / threadsComp.y);
+	
+
+
+	
+	
+	for (int i = 0; i < 5; i++)
+	{
+		dilatation_cuda << < gridDil, threadsDil >> > (d_marker1, d_resultDil);
+		complement_cuda << < gridComp, threadsComp >> > (d_resultDil, d_mask, d_marker2);
+		dilatation_cuda << < gridDil, threadsDil >> > (d_marker2, d_resultDil);
+		complement_cuda << < gridComp, threadsComp >> > (d_resultDil, d_mask, d_marker1);
+	}
+	
+	checkCudaErrors(cudaMemcpy(result->elements, d_marker1.elements, mask.numColumns*mask.numRows * sizeof(int), cudaMemcpyDeviceToHost));
+	checkCudaErrors(cudaFree(d_mask.elements));
+	checkCudaErrors(cudaFree(d_marker1.elements));
+	checkCudaErrors(cudaFree(d_marker2.elements));
+	checkCudaErrors(cudaFree(d_resultDil.elements));
+	return result;
+}
+
 Matrix* reconstruction(Matrix mask, Matrix marker, Matrix structuringElement)
 {
 
@@ -263,7 +325,7 @@ Matrix* openingByReconstruction(Matrix A, Matrix structuringElement)
 	createHostMatrixNoAllocation(resultEr, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
 	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
 	resultEr = erosion(A, structuringElement);
-	result = reconstruction(A, *resultEr, structuringElement);
+	result = reconstruction_cuda(A, *resultEr);
 	free(resultEr->elements);
 	free(resultEr);
 	return result;
