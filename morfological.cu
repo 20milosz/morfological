@@ -32,48 +32,44 @@ void createStructuringElement(Matrix structuringElement)
 
 __global__ void dilatation_cuda(Matrix A, Matrix result)
 {
+	int column = blockIdx.x * blockD + threadIdx.x+strucElDim/2;
+	int row = blockIdx.y * blockD + threadIdx.y+strucElDim/2;
 	
-
-	int column = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	//
 	__shared__ int dilTile[(blockD+strucElDim-1)*(blockD+strucElDim-1)];
 	
-
-
-	int subMatrix[strucElDim*strucElDim];
-	for (int i = 0; i < strucElDim*strucElDim; i++)
+	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + blockDim.x*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];
+	__syncthreads();
+	if (column < A.numColumns-strucElDim/2 && row < A.numRows-strucElDim/2)
 	{
-		subMatrix[i] = 0;
-	}
-	int index;
-	int CValue;
-
-	index = row * A.numColumns + column;
-	CValue = 0;
-
-	for (int i = 0; i < strucElDim; i++)
-	{
-		for (int j = 0; j < strucElDim; j++)
+		int subMatrix[strucElDim*strucElDim];
+		for (int i = 0; i < strucElDim*strucElDim; i++)
 		{
-			if ((column - j >= strucElDim / 2) && (row - i >= strucElDim / 2) && (column + j <= A.numColumns - strucElDim / 2) && (row + i <= A.numRows - strucElDim / 2))
-			{
-				subMatrix[j + strucElDim * i] = A.elements[index + j - strucElDim / 2 + (i - strucElDim / 2)*A.numColumns];
-			}
-			else
-			{
-				subMatrix[j + strucElDim * i] = 0;
+			subMatrix[i] = 0;
+		}
+		int index;
+		int CValue;
+
+		index = row * A.numColumns + column;
+		CValue = 0;
+
+		for (int i = -(strucElDim/2); i < strucElDim/2; i++)
+		{
+			for (int j = -(strucElDim/2); j < strucElDim/2; j++)
+			{			
+				subMatrix[j+strucElDim/2 + strucElDim * (i+strucElDim/2)] = A.elements[index + j + i*A.numColumns];
 			}
 		}
-	}
+		__syncthreads();
 
-	for (int i = 0; i < strucElDim*strucElDim; i++)
-	{
-		if (structuringElements[i] * subMatrix[i] == 1)
-			CValue = 1;
+		for (int i = 0; i < strucElDim*strucElDim; i++)
+		{
+			if (structuringElements[i] * subMatrix[i] == 1)
+				CValue = 1;
+		}
+		__syncthreads();
+
+		result.elements[index] = CValue;
 	}
-	result.elements[index] = CValue;
-	
 }
 
 
@@ -90,7 +86,7 @@ Matrix* dilatation(Matrix A, Matrix structuringElement)
 	createDeviceMatrix(&d_result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(int));
 	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyHostToDevice));
 
-	dim3 threads(blockD, blockD);
+	dim3 threads(blockD+strucElDim-1, blockD+strucElDim-1);
 	dim3 grid(A.numColumns / blockD, A.numRows / blockD);
 	dilatation_cuda <<<grid, threads >>> (d_A, d_result);
 	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(int), cudaMemcpyDeviceToHost));

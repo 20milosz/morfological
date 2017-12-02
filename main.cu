@@ -43,10 +43,11 @@ int main()
 	}
 
 	result0 = negation(bImage);
-	result3 = negation(*result0);
+	result2 = dilatation(*result0, h_structuringElement);
+	result3 = negation(*result2);
 	convertBinaryImageTOBitmapUsingHeader(result3, bmp->hp, &res_bmp);
 	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
-	writeBitmap(&res_bmp, "binaryzacja_gen_duzy2.bmp");
+	writeBitmap(&res_bmp, "dylatacja.bmp");
 
 	float czas = 1000000000;
 
