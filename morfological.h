@@ -10,7 +10,7 @@
 #include "device_launch_parameters.h"
 
 #define strucElDim 3
-#define blockD 30
+#define blockD 32
 
 __constant__ static uint8_t structuringElements[strucElDim*strucElDim];
 
