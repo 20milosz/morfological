@@ -117,7 +117,7 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 	int column = threadIdx.x+strucElDim/2;
 	int row = threadIdx.y+strucElDim/2;
 
-	printf("sdf\n");
+//	printf("%d\n", structuringElements[1]);
 
 	__shared__ uint8_t dilTile[(blockD+strucElDim-1)*(blockD+strucElDim-1)];
 	
@@ -181,6 +181,7 @@ Matrix* dilatation(Matrix A, Matrix structuringElement)
 	dim3 grid1(A.numColumns / blockD, A.numRows / blockD);
 	printf("sfsdf\n");
 	dilatation_cuda <<<grid1, threads1 >>> (d_A, d_result);
+//	getLastCudaError();
 	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 	checkCudaErrors(cudaFree(d_A.elements));
 	checkCudaErrors(cudaFree(d_structuringElement.elements));
