@@ -10,17 +10,16 @@
 #include "device_launch_parameters.h"
 
 #define strucElDim 3
-#define blockD 15
+#define blockD 30
 
-__constant__ static int structuringElements[strucElDim*strucElDim];
+__constant__ static uint8_t structuringElements[strucElDim*strucElDim];
 
 
 void createStructuringElement(Matrix structuringElement);
 void copy(Matrix structuringElement);
 Matrix* dilatation(Matrix A, Matrix structuringElement);
 Matrix* erosion(Matrix A, Matrix structuringElement);
-Matrix* complement
-(Matrix A, Matrix B);
+Matrix* complement(Matrix A, Matrix B);
 Matrix* negation(Matrix A);
 Matrix* opening(Matrix A, Matrix structuringElement);
 Matrix* closing(Matrix A, Matrix structuringElement);

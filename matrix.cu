@@ -10,7 +10,7 @@ void createHostMatrix(Matrix *matrix, int numRows, int numColums, int size)
 {
 	matrix->numRows = numRows;
 	matrix->numColumns = numColums;
-	matrix->elements = (int *)malloc(size);
+	matrix->elements = (uint8_t *)malloc(size);
 }
 void createDeviceMatrix(Matrix *matrix, int numRows, int numColums, int size)
 {

@@ -13,7 +13,7 @@ typedef struct
 {
 	int numRows;
 	int numColumns;
-	int* elements;
+	uint8_t* elements;
 } Matrix;
 
 void createHostMatrix(Matrix *matrix, int numRows, int numColums, int size);

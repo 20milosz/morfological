@@ -24,13 +24,11 @@ int main()
 	Matrix* result3;
 	Matrix h_structuringElement;
 
-	createHostMatrix(&h_structuringElement, strucElDim, strucElDim, strucElDim *strucElDim * sizeof(int));
+	createHostMatrix(&h_structuringElement, strucElDim, strucElDim, strucElDim *strucElDim * sizeof(uint8_t));
 	verifyHostAllocation(h_structuringElement);
 	createStructuringElement(h_structuringElement);
 	showMatrix(h_structuringElement, "structuring element");
 	copy(h_structuringElement);
-
-
 
 
 	bmp = readBitmap("fingerprint_noise_duzy.bmp");
