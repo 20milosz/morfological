@@ -105,7 +105,6 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 
 Matrix* dilatation(Matrix A, Matrix structuringElement)
 {
-		
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	verifyHostAllocation(*result);
@@ -117,9 +116,7 @@ Matrix* dilatation(Matrix A, Matrix structuringElement)
 	createDeviceMatrix(&d_result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_structuringElement.elements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), cudaMemcpyHostToDevice));
-
 	dim3 threads1(blockD + strucElDim - 1, blockD + strucElDim - 1);
-	//dim3 threads(blockD + strucElDim + 100, blockD + strucElDim + 100);
 	dim3 grid1(A.numColumns / blockD, A.numRows / blockD);
 	dilatation_cuda <<<grid1, threads1 >>> (d_A, d_result);
 	checkCudaErrors(cudaGetLastError());
@@ -127,13 +124,11 @@ Matrix* dilatation(Matrix A, Matrix structuringElement)
 	checkCudaErrors(cudaFree(d_A.elements));
 	checkCudaErrors(cudaFree(d_structuringElement.elements));
 	checkCudaErrors(cudaFree(d_result.elements));
-
 	return result;
 }
 
 Matrix* erosion(Matrix A, Matrix structuringElement)
 {
-
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	verifyHostAllocation(*result);
@@ -146,7 +141,6 @@ Matrix* erosion(Matrix A, Matrix structuringElement)
 	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_structuringElement.elements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	dim3 threads1(blockD + strucElDim - 1, blockD + strucElDim - 1);
-	//dim3 threads(blockD + strucElDim + 100, blockD + strucElDim + 100);
 	dim3 grid1(A.numColumns / blockD, A.numRows / blockD);
 	erosion_cuda << <grid1, threads1 >> > (d_A, d_result);
 	checkCudaErrors(cudaGetLastError());
@@ -154,7 +148,6 @@ Matrix* erosion(Matrix A, Matrix structuringElement)
 	checkCudaErrors(cudaFree(d_A.elements));
 	checkCudaErrors(cudaFree(d_structuringElement.elements));
 	checkCudaErrors(cudaFree(d_result.elements));
-
 	return result;
 }
 __global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
@@ -169,7 +162,6 @@ __global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
 	}
 
 }
-
 
 Matrix* complement(Matrix A, Matrix B)
 {
@@ -214,8 +206,6 @@ Matrix* negation(Matrix A)
 	return result;
 }
 
-
-
 Matrix* opening(Matrix A, Matrix structuringElement)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
@@ -241,6 +231,31 @@ Matrix* closing(Matrix A, Matrix structuringElement)
 	free(resultDilatation);
 	return result;
 }
+/*
+__global__ int checkIfEqual_cuda(Matrix A, Matrix B)
+{
+	int column = threadIdx.x + strucElDim / 2;
+	int row = threadIdx.y + strucElDim / 2;
+
+	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];
+	if (A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] != B.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y])
+		dilTile[threadIdx.x + blockDim.x*threadIdx.y] = 1;
+	else
+		dilTile[threadIdx.x + blockDim.x*threadIdx.y] = 0;
+	__syncthreads();
+	int tablica[1024];
+
+	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)
+	{
+		index = row * blockDim.x + column;
+		dilTile[index]=
+	}
+	__syncthreads();
+	return 1;
+}
+*/
+
+
 int checkIfEqual(Matrix A, Matrix B)
 {
 	int isEqual = 1;
@@ -274,8 +289,9 @@ Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 	dim3 threadsComp(blockD + strucElDim - 1, blockD + strucElDim - 1);
 	dim3 gridComp((mask.numColumns + threadsComp.x - 1) / threadsComp.x, (mask.numRows + threadsComp.y - 1) / threadsComp.y);
 	
-	
+	int isEqual=1;
 	for (int i = 0; i < 10; i++)
+	//while(!checkIfEqual(d_marker1, d_marker2))
 	{
 		dilatation_cuda <<< gridDil, threadsDil >>> (d_marker1, d_resultDil);
 		complement_cuda <<< gridComp, threadsComp >>> (d_resultDil, d_mask, d_marker2);
