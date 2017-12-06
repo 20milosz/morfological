@@ -41,25 +41,25 @@ int main()
 	}
 
 	result0 = negation(bImage);
-	result2 = erosion(*result0, h_structuringElement);
+	result2 = dilatation(*result0, h_structuringElement);
 	result3 = negation(*result2);
 	convertBinaryImageTOBitmapUsingHeader(result2, bmp->hp, &res_bmp);
 	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
-	writeBitmap(&res_bmp, "erozja.bmp");
+	writeBitmap(&res_bmp, "dylatacja.bmp");
 
 	float czas = 1000000000;
 
 	sdkCreateTimer(&timer);
 	sdkStartTimer(&timer);
 
-//	for (int i = 0; i < 1; i++)
-//	{
+	for (int i = 0; i < 1; i++)
+	{
 		sdkStartTimer(&timer);
 		result = openingByReconstruction(*result0, h_structuringElement);
 		sdkStopTimer(&timer);
 		if (sdkGetTimerValue(&timer) < czas)
 			czas = sdkGetTimerValue(&timer);
-//	}
+	}
 
 
 	printf("Processing time: %f ms\n", czas);
