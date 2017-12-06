@@ -41,11 +41,11 @@ int main()
 	}
 
 	result0 = negation(bImage);
-	result2 = erosion(*result0, h_structuringElement);
+	result2 = dilatation(*result0, h_structuringElement);
 	result3 = negation(*result2);
 	convertBinaryImageTOBitmapUsingHeader(result2, bmp->hp, &res_bmp);
 	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
-	writeBitmap(&res_bmp, "erozja.bmp");
+	writeBitmap(&res_bmp, "dylatacja.bmp");
 
 	float czas = 1000000000;
 

@@ -30,7 +30,6 @@ void createStructuringElement(Matrix structuringElement)
 	}
 }
 
-
 __global__ void erosion_cuda(Matrix A, Matrix result)
 {
 	int column = threadIdx.x + strucElDim / 2;
@@ -49,30 +48,23 @@ __global__ void erosion_cuda(Matrix A, Matrix result)
 
 		index = row * blockDim.x + column;
 		CValue = 1;
-
-		for (int i = -(strucElDim / 2); i < strucElDim / 2; i++)
+		
+		for (int i = -(strucElDim / 2); i <= strucElDim / 2; i++)
 		{
-			for (int j = -(strucElDim / 2); j < strucElDim / 2; j++)
+			for (int j = -(strucElDim / 2); j <= strucElDim / 2; j++)
 			{
 				subMatrix[j + strucElDim / 2 + strucElDim * (i + strucElDim / 2)] = dilTile[index + j + i*blockDim.x];
 			}
 		}
-
 		for (int i = 0; i < strucElDim*strucElDim; i++)
 		{
 			if (structuringElements[i] == 1 && subMatrix[i] == 0)
 				CValue = 0;
 		}
-
-
 		result.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] = CValue;
-
-
 	}
 	__syncthreads();
-
 }
-
 
 __global__ void dilatation_cuda(Matrix A, Matrix result)
 {
@@ -93,27 +85,21 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 		index = row * blockDim.x + column;
 		CValue = 0;
 
-		for (int i = -(strucElDim / 2); i < strucElDim / 2; i++)
+		for (int i = -(strucElDim / 2); i <= strucElDim / 2; i++)
 		{
-			for (int j = -(strucElDim / 2); j < strucElDim / 2; j++)
+			for (int j = -(strucElDim / 2); j <= strucElDim / 2; j++)
 			{
 				subMatrix[j + strucElDim / 2 + strucElDim * (i + strucElDim / 2)] = dilTile[index + j + i*blockDim.x];
 			}
 		}
-
 		for (int i = 0; i < strucElDim*strucElDim; i++)
 		{
 			if (structuringElements[i] * subMatrix[i] == 1)
 				CValue = 1;
 		}
-
-
 		result.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] = CValue;
-
-
 	}
 	__syncthreads();
-
 }
 
 
@@ -171,51 +157,6 @@ Matrix* erosion(Matrix A, Matrix structuringElement)
 
 	return result;
 }
-/*
-Matrix* erosion(Matrix A, Matrix structuringElement)
-{
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
-	uint8_t subMatrix[strucElDim*strucElDim];
-	for (int i = 0; i < strucElDim*strucElDim; i++)
-	{
-		subMatrix[i] = 1;
-	}
-	int index;
-	uint8_t CValue;
-	for (int row = 0; row < A.numRows; row++)
-	{
-		for (int column = 0; column < A.numColumns; column++)
-		{
-			index = row * A.numColumns + column;
-			CValue = 1;
-			for (int i = 0; i < strucElDim; i++)
-			{
-				for (int j = 0; j < strucElDim; j++)
-				{
-					if ((column - j >= strucElDim / 2) && (row - i >= strucElDim / 2) && (column + j <= A.numColumns - strucElDim / 2) && (row + i <= A.numRows - strucElDim / 2))
-					{
-						subMatrix[j + strucElDim * i] = A.elements[index + j - strucElDim / 2 + (i - strucElDim / 2)*A.numColumns];
-					}
-					else
-					{
-						subMatrix[j + strucElDim * i] = 1;
-					}
-				}
-			}
-
-			for (int i = 0; i < strucElDim*strucElDim; i++)
-			{
-				if (structuringElement.elements[i] == 1 && subMatrix[i] == 0)
-					CValue = 0;
-			}
-			result->elements[index] = CValue;
-		}
-	}
-	return result;
-}*/
-
 __global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
 {
 	int column = threadIdx.x + blockIdx.x*blockDim.x;
