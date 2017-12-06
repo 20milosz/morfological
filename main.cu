@@ -41,7 +41,7 @@ int main()
 	}
 
 	result0 = negation(bImage);
-	result2 = dilatation(*result0, h_structuringElement);
+	result2 = dilatation(*result0);
 	result3 = negation(*result2);
 	convertBinaryImageTOBitmapUsingHeader(result2, bmp->hp, &res_bmp);
 	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
@@ -55,7 +55,7 @@ int main()
 //	for (int i = 0; i < 1; i++)
 //	{
 		sdkStartTimer(&timer);
-		result = openingByReconstruction(*result0, h_structuringElement);
+		result = openingByReconstruction(*result0);
 		sdkStopTimer(&timer);
 		if (sdkGetTimerValue(&timer) < czas)
 			czas = sdkGetTimerValue(&timer);
@@ -71,7 +71,7 @@ int main()
 	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
 	writeBitmap(&res_bmp, "opening_gen_duzy.bmp");
 
-	result = openingByReconstruction(*result0, h_structuringElement);
+	result = openingByReconstruction(*result0);
 	//result2 = closing(*result, h_structuringElement);
 	result3 = negation(*result);
 	convertBinaryImageTOBitmapUsingHeader(result3, bmp->hp, &res_bmp);

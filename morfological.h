@@ -17,15 +17,15 @@ __constant__ static uint8_t structuringElements[strucElDim*strucElDim];
 
 void createStructuringElement(Matrix structuringElement);
 void copy(Matrix structuringElement);
-Matrix* dilatation(Matrix A, Matrix structuringElement);
-Matrix* erosion(Matrix A, Matrix structuringElement);
+Matrix* dilatation(Matrix A);
+Matrix* erosion(Matrix A);
 Matrix* complement(Matrix A, Matrix B);
 Matrix* negation(Matrix A);
-Matrix* opening(Matrix A, Matrix structuringElement);
-Matrix* closing(Matrix A, Matrix structuringElement);
+Matrix* opening(Matrix A);
+Matrix* closing(Matrix A);
 int checkIfEqual(Matrix A, Matrix B);
-Matrix* reconstruction(Matrix mask, Matrix marker, Matrix structuringElement);
-Matrix* openingByReconstruction(Matrix A, Matrix structuringElement);
+Matrix* reconstruction(Matrix mask, Matrix marker);
+Matrix* openingByReconstruction(Matrix A);
 
 
 #endif
