@@ -5,6 +5,7 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+
 void copy(Matrix structuringElement)
 {
 	checkCudaErrors(cudaMemcpyToSymbol(structuringElements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), 0, cudaMemcpyHostToDevice));
@@ -223,29 +224,46 @@ Matrix* closing(Matrix A)
 	free(resultDilatation);
 	return result;
 }
-/*
-__global__ int checkIfEqual_cuda(Matrix A, Matrix B)
+
+__global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
 {
-	int column = threadIdx.x + strucElDim / 2;
-	int row = threadIdx.y + strucElDim / 2;
-
-	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];
-	if (A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] != B.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y])
-		dilTile[threadIdx.x + blockDim.x*threadIdx.y] = 1;
-	else
-		dilTile[threadIdx.x + blockDim.x*threadIdx.y] = 0;
+	
+	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
+	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
+	unsigned int offset = 0; //to do kafelkow
+	unsigned int n = A.numColumns*B.numRows - 1;
+	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
+	
+	unsigned int temp =0;
+	while (id + offset < n) {
+		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
+			temp = 1; //mamy tutaj roznice
+		}
+		offset += tile; //iteruj do kolejnego kafelka
+	}
+	cache[threadIdx.x] = temp; //zapisz "najgorszy przypadek" (czyli 1 =  rozne piksele) do cache'a dla kazdego watku
 	__syncthreads();
-	int tablica[1024];
 
-	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)
-	{
-		index = row * blockDim.x + column;
-		dilTile[index]=
+	//teraz prawdziwa redukcja, nie kafelkowa
+	
+	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {// bierzemy polowe watkow i dzielimy przez dwa az dojdziemy do zera
+		if (threadIdx.x < s) { //bierzemy "polowe" ktora stanowi s
+			//teraz dla kazdego watku wybieramy wartosc najwieksza, czyli 1, jezeli istnieje roznica w obrazkach pomiedzy naszym watkiem i tym "po drugiej stronie s"
+			cache[threadIdx.x] = MAX(cache[threadIdx.x], cache[threadIdx.x + s]);
+		}
+		__syncthreads();
+	}
+
+
+	//czana magia nad ktora tyle mi sie zeszlo...
+	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
+		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
+		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
+		atomicExch(mutex, 0);  // odblokuj "mutexa"
 	}
 	__syncthreads();
-	return 1;
 }
-*/
+
 
 
 int checkIfEqual(Matrix A, Matrix B)
@@ -270,25 +288,45 @@ Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 	Matrix d_marker1;
 	Matrix d_marker2;
 	Matrix d_resultDil;
+
+	unsigned int *d_max;
+	int *d_mutex;
+	unsigned int h_max = 1;
+
+	checkCudaErrors(cudaMalloc((void**)&d_max, sizeof(unsigned int)));
+	checkCudaErrors(cudaMalloc((void**)&d_mutex, sizeof(int)));
+
 	createDeviceMatrix(&d_mask, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
 	createDeviceMatrix(&d_marker1, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
 	createDeviceMatrix(&d_marker2, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
 	createDeviceMatrix(&d_resultDil, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
 	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_marker1.elements, marker.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
+
+	
+
+	checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));
+	checkCudaErrors(cudaMemset(d_mutex, 0, sizeof(int)));
+
 	dim3 threadsDil(blockD + strucElDim - 1, blockD + strucElDim - 1);
 	dim3 gridDil(mask.numColumns / blockD, mask.numRows / blockD);
 	dim3 threadsComp(blockD + strucElDim - 1, blockD + strucElDim - 1);
 	dim3 gridComp((mask.numColumns + threadsComp.x - 1) / threadsComp.x, (mask.numRows + threadsComp.y - 1) / threadsComp.y);
 	
+	dim3 gridEq = 256; //jeden wymiar, wiecej i tak nic nam nie da
+	dim3 blockEq = 256; //jeden wymiar, wiecej i tak nic nam nie da //256 watkow
+	unsigned int shMemEq = 256 *sizeof(unsigned int);  //shared memory == block size* int
 	int isEqual=1;
-	for (int i = 0; i < 10; i++)
-	//while(!checkIfEqual(d_marker1, d_marker2))
+	while(h_max == 1)
 	{
 		dilatation_cuda <<< gridDil, threadsDil >>> (d_marker1, d_resultDil);
 		complement_cuda <<< gridComp, threadsComp >>> (d_resultDil, d_mask, d_marker2);
 		dilatation_cuda <<< gridDil, threadsDil >>> (d_marker2, d_resultDil);
 		complement_cuda <<< gridComp, threadsComp >>> (d_resultDil, d_mask, d_marker1);
+
+		checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));//zeruj max
+		checkIfEqual_cuda <<< gridEq, blockEq, shMemEq >>> (d_marker1, d_marker2, d_max, d_mutex);
+		cudaMemcpy(&h_max, d_max, sizeof(unsigned int), cudaMemcpyDeviceToHost);//zgraj max
 	}
 	
 	checkCudaErrors(cudaMemcpy(result->elements, d_marker1.elements, d_marker1.numColumns*d_marker1.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));

@@ -89,22 +89,22 @@ void freeBitmap(bitmap *bmp) {
 }
 /*
 int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
-	//int16_t status = initializeMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width);
-	createHostMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width, bitmap_in->hp->height*bitmap_in->hp->width * sizeof(int));
-	verifyHostAllocation(*mat_out);
+//int16_t status = initializeMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width);
+createHostMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width, bitmap_in->hp->height*bitmap_in->hp->width * sizeof(int));
+verifyHostAllocation(*mat_out);
 
-	int i = 0;
-	for (i = 0; i < (bitmap_in->hp->width)*(bitmap_in->hp->height); i++) {
-		//		if ((bitmap_in->image[i].r+ bitmap_in->image[i].b+ bitmap_in->image[i].g)/3 < 170) {
-		//	if ((bitmap_in->image[i].r/3 + bitmap_in->image[i].b/3 + bitmap_in->image[i].g/3) < 128) {
-		if (bitmap_in->image[i].r < 170) {
-			mat_out->elements[i] = 1;
-		}
-		else {
-			mat_out->elements[i] = 0;
-		}
-	}
-	return 0;
+int i = 0;
+for (i = 0; i < (bitmap_in->hp->width)*(bitmap_in->hp->height); i++) {
+//		if ((bitmap_in->image[i].r+ bitmap_in->image[i].b+ bitmap_in->image[i].g)/3 < 170) {
+//	if ((bitmap_in->image[i].r/3 + bitmap_in->image[i].b/3 + bitmap_in->image[i].g/3) < 128) {
+if (bitmap_in->image[i].r < 170) {
+mat_out->elements[i] = 1;
+}
+else {
+mat_out->elements[i] = 0;
+}
+}
+return 0;
 }*/
 
 int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
@@ -130,16 +130,16 @@ int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 	int j = 0;
 	int idxbitmap = 0;
 	int idxmatrix = 0;
-		for (i = 0; i < bitmap_in->hp->width; i++)
+	for (i = 0; i < bitmap_in->hp->width; i++)
+	{
+		for (j = 0; j < bitmap_in->hp->height; j++)
 		{
-			for (j = 0; j < bitmap_in->hp->height; j++)
-			{
-				idxbitmap = i + bitmap_in->hp->width*j;
-				idxmatrix = i+strucElDim/2 + width*(j+strucElDim/2);
-				if (bitmap_in->image[idxbitmap].r < 170) {
+			idxbitmap = i + bitmap_in->hp->width*j;
+			idxmatrix = i + strucElDim / 2 + width*(j + strucElDim / 2);
+			if (bitmap_in->image[idxbitmap].r < 170) {
 				mat_out->elements[idxmatrix] = 1;
 			}
-			else 
+			else
 			{
 				mat_out->elements[idxmatrix] = 0;
 			}
@@ -147,10 +147,10 @@ int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 		}
 
 	}
-		bitmap_in->hp->width = width;
-		bitmap_in->hp->height = height;
-		bitmap_in->hp->bitmapsize=width*height;
-		printf("wysokosc%d\n", height);
+	bitmap_in->hp->width = width;
+	bitmap_in->hp->height = height;
+	bitmap_in->hp->bitmapsize = width*height;
+	printf("wysokosc%d\n", height);
 
 	return 0;
 }

@@ -1,6 +1,7 @@
 #include "bitmap.h"
 #include "morfological.h"
 #include "helper_timer.h"
+#include "helper_cuda.h"
 
 //__constant__ static int structuringElement[strucElDim*strucElDim];
 
