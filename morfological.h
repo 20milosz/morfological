@@ -9,8 +9,8 @@
 #include "cuda_runtime_api.h"
 #include "device_launch_parameters.h"
 
-#define strucElDim 3
-#define blockD 30
+#define strucElDim 7
+#define blockD 26
 
 __constant__ static uint8_t structuringElements[strucElDim*strucElDim];
 
@@ -26,6 +26,7 @@ Matrix* closing(Matrix A);
 int checkIfEqual(Matrix A, Matrix B);
 Matrix* reconstruction(Matrix mask, Matrix marker);
 Matrix* openingByReconstruction(Matrix A);
+Matrix* openingByReconstruction2(Matrix mask);
 
 
 #endif

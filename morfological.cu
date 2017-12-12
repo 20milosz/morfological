@@ -70,15 +70,15 @@ __global__ void erosion_cuda(Matrix A, Matrix result)
 __global__ void dilatation_cuda(Matrix A, Matrix result)
 {
 	int column = threadIdx.x + strucElDim / 2;		//indeks samego obrazu, nie indeksuje dodatkowej krawêdzi wype³nionej zerami
-	int row = threadIdx.y + strucElDim / 2;			
+	int row = threadIdx.y + strucElDim / 2;
 
 	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];	//kafelek, zawiera przetwarzan¹ czêœæ obrazu plus dodatkow¹ krawêdŸ o szerokoœci strucElDim/2, 
-																							//pozwala to na pominiêcie instrukcji warunkowych
+																						//pozwala to na pominiêcie instrukcji warunkowych
 
 	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];	//skopiowanie do pamiêci wspo³dzielonej(kafelka)
-																					//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
-																					//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
-																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
+																																								//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
+																																								//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
+																																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
 
 	__syncthreads();
 
@@ -109,6 +109,52 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 	}
 	__syncthreads();
 }
+
+__global__ void dilatation_complement_cuda(Matrix A, Matrix B, Matrix result)
+{
+	int column = threadIdx.x + strucElDim / 2;		//indeks samego obrazu, nie indeksuje dodatkowej krawêdzi wype³nionej zerami
+	int row = threadIdx.y + strucElDim / 2;
+
+	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];	//kafelek, zawiera przetwarzan¹ czêœæ obrazu plus dodatkow¹ krawêdŸ o szerokoœci strucElDim/2, 
+																						//pozwala to na pominiêcie instrukcji warunkowych
+
+	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];	//skopiowanie do pamiêci wspo³dzielonej(kafelka)
+																																								//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
+																																								//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
+																																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
+
+	__syncthreads();
+
+	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)		//aby nie przetwarzaæ krawêdzi po prawej stronie obrazu i na dole, inaczej mo¿na by wyjœæ poza obraz
+	{
+		//odpowiednia czêœæ obrazu jest kopiowana do subMatrix o wymiarze elementu strukturalnego, nastêpnie jest porównywana z elementem strukturalnym
+		//je¿eli jedynka elementu strukturalnego pokrywa siê z jedynka subMatrix, piksel wynikowy ma wartoœæ 1, w przeciwnym wypadku 0
+		uint8_t subMatrix[strucElDim*strucElDim];
+		int index;
+		uint8_t CValue;
+
+		index = row * blockDim.x + column;
+		CValue = 0;
+
+		for (int i = -(strucElDim / 2); i <= strucElDim / 2; i++)
+		{
+			for (int j = -(strucElDim / 2); j <= strucElDim / 2; j++)
+			{
+				subMatrix[j + strucElDim / 2 + strucElDim * (i + strucElDim / 2)] = dilTile[index + j + i*blockDim.x];
+			}
+		}
+		for (int i = 0; i < strucElDim*strucElDim; i++)
+		{
+			if (structuringElements[i] * subMatrix[i] == 1)
+			{
+				CValue = 1;
+			}
+		}
+		result.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] = CValue*B.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];
+	}
+	__syncthreads();
+}
+
 
 
 Matrix* dilatation(Matrix A)
@@ -234,13 +280,11 @@ Matrix* closing(Matrix A)
 
 __global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
 {
-	
 	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
 	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
 	unsigned int offset = 0; //to do kafelkow
 	unsigned int n = A.numColumns*B.numRows - 1;
 	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
-	
 	unsigned int temp =0;
 	while (id + offset < n) {
 		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
@@ -265,7 +309,8 @@ __global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int
 	//czana magia nad ktora tyle mi sie zeszlo...
 	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
 		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
-		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
+//		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
+		*maximum = cache[0]; //porownaj z innymi watkami "0" (czytaj w innym bloku)
 		atomicExch(mutex, 0);  // odblokuj "mutexa"
 	}
 	__syncthreads();
@@ -398,4 +443,54 @@ Matrix* openingByReconstruction(Matrix A)
 	return result;
 }
 
+
+Matrix* openingByReconstruction2(Matrix mask)
+{
+	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
+	createHostMatrix(result, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+
+	Matrix d_mask;
+	Matrix d_marker1;
+	Matrix d_marker2;
+
+	unsigned int *d_max;
+	int *d_mutex;
+	unsigned int h_max = 1;
+
+	checkCudaErrors(cudaMalloc((void**)&d_max, sizeof(unsigned int)));
+	checkCudaErrors(cudaMalloc((void**)&d_mutex, sizeof(int)));
+
+	createDeviceMatrix(&d_mask, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	createDeviceMatrix(&d_marker1, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	createDeviceMatrix(&d_marker2, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
+
+	//checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));
+	checkCudaErrors(cudaMemset(d_mutex, 0, sizeof(int)));
+
+	dim3 threads(blockD + strucElDim - 1, blockD + strucElDim - 1);
+	dim3 grid(mask.numColumns / blockD, mask.numRows / blockD);
+
+	dim3 gridEq = 256; //jeden wymiar, wiecej i tak nic nam nie da
+	dim3 blockEq = 256; //jeden wymiar, wiecej i tak nic nam nie da //256 watkow
+	unsigned int shMemEq = 256 * sizeof(unsigned int);  //shared memory == block size* int
+	int isEqual = 1;
+	erosion_cuda << <grid, threads >> > (d_mask, d_marker1);
+	while (h_max == 1)
+	{
+	//for (int i = 0; i < 3; i++)
+		//{
+			dilatation_complement_cuda << < grid, threads >> > (d_marker1, d_mask, d_marker2);
+			dilatation_complement_cuda << < grid, threads >> > (d_marker2, d_mask, d_marker1);
+		//}
+		checkIfEqual_cuda << < gridEq, blockEq, shMemEq >> > (d_marker1, d_marker2, d_max, d_mutex);
+		cudaMemcpy(&h_max, d_max, sizeof(unsigned int), cudaMemcpyDeviceToHost);//zgraj max
+	}
+
+	checkCudaErrors(cudaMemcpy(result->elements, d_marker1.elements, d_marker1.numColumns*d_marker1.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+	checkCudaErrors(cudaFree(d_mask.elements));
+	checkCudaErrors(cudaFree(d_marker1.elements));
+	checkCudaErrors(cudaFree(d_marker2.elements));
+	return result;
+}
 

@@ -33,7 +33,7 @@ int main()
 	copy(h_structuringElement);
 
 
-	bmp = readBitmap("fingerprint_noise_duzy.bmp");
+	bmp = readBitmap("bardzo_duzy.bmp");
 //	bmp = readBitmap("binaryzacja_gen_duzy.bmp");
 	status = convertBitmapToBinaryImage(bmp, &bImage);
 	if (status == -1) {
@@ -57,7 +57,7 @@ int main()
 //	for (int i = 0; i < 1; i++)
 //	{
 		sdkStartTimer(&timer);
-		result = openingByReconstruction(*result0);
+		result = openingByReconstruction2(*result0);
 		sdkStopTimer(&timer);
 		if (sdkGetTimerValue(&timer) < czas)
 			czas = sdkGetTimerValue(&timer);
