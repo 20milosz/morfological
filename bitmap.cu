@@ -1,7 +1,5 @@
 #include "bitmap.h"
 
-
-
 bitmap* readBitmap(char* file) {
 	bitmap* bmp;
 	int32_t i, j;
@@ -87,25 +85,6 @@ void freeBitmap(bitmap *bmp) {
 	free(bmp->hp);
 	free(bmp->image);
 }
-/*
-int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
-//int16_t status = initializeMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width);
-createHostMatrix(mat_out, bitmap_in->hp->height, bitmap_in->hp->width, bitmap_in->hp->height*bitmap_in->hp->width * sizeof(int));
-verifyHostAllocation(*mat_out);
-
-int i = 0;
-for (i = 0; i < (bitmap_in->hp->width)*(bitmap_in->hp->height); i++) {
-//		if ((bitmap_in->image[i].r+ bitmap_in->image[i].b+ bitmap_in->image[i].g)/3 < 170) {
-//	if ((bitmap_in->image[i].r/3 + bitmap_in->image[i].b/3 + bitmap_in->image[i].g/3) < 128) {
-if (bitmap_in->image[i].r < 170) {
-mat_out->elements[i] = 1;
-}
-else {
-mat_out->elements[i] = 0;
-}
-}
-return 0;
-}*/
 
 int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 	//najpierw robiê taki obraz aby jego rozmiar by³ wielokrotnoœcia blockD, nastêpnie dodaje krawêdzie o szerokoœci structElDim/2
@@ -119,7 +98,6 @@ int8_t convertBitmapToBinaryImage(bitmap* bitmap_in, Matrix* mat_out) {
 	height = height + strucElDim - 1;
 	width = width + strucElDim - 1;
 	createHostMatrix(mat_out, height, width, height*width * sizeof(int));
-	verifyHostAllocation(*mat_out);
 
 	for (int i = 0; i < width*height; i++)
 	{

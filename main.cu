@@ -5,36 +5,29 @@
 
 //__constant__ static int structuringElement[strucElDim*strucElDim];
 
-
 int main()
 {
 	checkCudaErrors(cudaSetDevice(0));
-	
 	StopWatchInterface *timer = NULL;
 
 	bitmap* bmp;
 	Matrix bImage;
 	bitmap res_bmp;
-
 	int8_t status;
 	int i = 0;
-
-	Matrix* result0;
+	Matrix* resultNegation;
 	Matrix* result;
-	Matrix* result2;
-	Matrix* result3;
+	Matrix* resultMorfOp;
 	Matrix h_structuringElement;
 
-
+	// generacja elementu strukturalnego
 	createHostMatrix(&h_structuringElement, strucElDim, strucElDim, strucElDim *strucElDim * sizeof(uint8_t));
-	verifyHostAllocation(h_structuringElement);
 	createStructuringElement(h_structuringElement);
 	showMatrix(h_structuringElement, "structuring element");
 	copy(h_structuringElement);
 
-
-	bmp = readBitmap("bardzo_duzy.bmp");
-//	bmp = readBitmap("binaryzacja_gen_duzy.bmp");
+	// wczytanie obrazu
+	bmp = readBitmap("fingerprint_noise_duzy.bmp");
 	status = convertBitmapToBinaryImage(bmp, &bImage);
 	if (status == -1) {
 		printf("Error while converting bitmap to binary image.\n");
@@ -42,57 +35,70 @@ int main()
 		exit(0);
 	}
 
-	result0 = negation(bImage);
-	result2 = dilatation(*result0);
-	result3 = negation(*result2);
-	convertBinaryImageTOBitmapUsingHeader(result2, bmp->hp, &res_bmp);
-	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
+	// wstepnie przygotowanie obrazu
+	// wykonane operacje morfologiczne w danym przypdaku maja sens je¿eli pracuje siê na obrazie zanegowanym
+	resultNegation = negation(bImage);
+	
+	
+	resultMorfOp = dilatation(*resultNegation);
+	result = negation(*resultMorfOp);
+	convertBinaryImageTOBitmapUsingHeader(result, bmp->hp, &res_bmp);
 	writeBitmap(&res_bmp, "dylatacja.bmp");
+	free(res_bmp.image);
+	free(resultMorfOp->elements);
+	free(resultMorfOp);
+	free(result->elements);
+	free(result);
+
+
+	resultMorfOp = erosion(*resultNegation);
+	result = negation(*resultMorfOp);
+	convertBinaryImageTOBitmapUsingHeader(result, bmp->hp, &res_bmp);
+	writeBitmap(&res_bmp, "erozja.bmp");
+	free(res_bmp.image);
+	free(resultMorfOp->elements);
+	free(resultMorfOp);
+	free(result->elements);
+	free(result);
 
 	float czas = 1000000000;
-
 	sdkCreateTimer(&timer);
 	sdkStartTimer(&timer);
-
-//	for (int i = 0; i < 1; i++)
-//	{
+	for (int i = 0; i < 100; i++)
+	{
 		sdkStartTimer(&timer);
-		result = openingByReconstruction2(*result0);
+		resultMorfOp = openingByReconstruction(*resultNegation);
 		sdkStopTimer(&timer);
+		free(resultMorfOp->elements);
+		free(resultMorfOp);
 		if (sdkGetTimerValue(&timer) < czas)
 			czas = sdkGetTimerValue(&timer);
-//	}
-
-
+	}
 	printf("Processing time: %f ms\n", czas);
 	sdkDeleteTimer(&timer);
-
-	//result2 = closing(*result, h_structuringElement);
-	result3 = negation(*result);
-	convertBinaryImageTOBitmapUsingHeader(result3, bmp->hp, &res_bmp);
-	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
-	writeBitmap(&res_bmp, "opening_gen_duzy.bmp");
-
-	result = openingByReconstruction(*result0);
-	//result2 = closing(*result, h_structuringElement);
-	result3 = negation(*result);
-	convertBinaryImageTOBitmapUsingHeader(result3, bmp->hp, &res_bmp);
-	//convertBinaryImageTOBitmapUsingHeader(&bImage, bmp->hp, &res_bmp);
-	writeBitmap(&res_bmp, "openingByReconstruction_gen_duzy.bmp");
-
-
-	freeBitmap(bmp);
-
-	free(result0->elements);
+	result = negation(*resultMorfOp);
+	convertBinaryImageTOBitmapUsingHeader(result, bmp->hp, &res_bmp);
+	writeBitmap(&res_bmp, "otwarciePrzezRekonstrukcje.bmp");
+	free(res_bmp.image);
 	free(result->elements);
-	//free(result2->elements);
-	free(result3->elements);
-	free(h_structuringElement.elements);
-	free(result0);
 	free(result);
-	//free(result2);
-	free(result3);
 
+
+	resultMorfOp = opening(*resultNegation);
+	result = negation(*resultMorfOp);
+	convertBinaryImageTOBitmapUsingHeader(result, bmp->hp, &res_bmp);
+	writeBitmap(&res_bmp, "otwarcie.bmp");
+	free(res_bmp.image);
+	free(resultMorfOp->elements);
+	free(resultMorfOp);
+	free(result->elements);
+	free(result);
+
+
+	free(resultNegation->elements);
+	free(resultNegation);
+	freeBitmap(bmp);
+	free(h_structuringElement.elements);
 
 	WINPAUSE;
 	return 0;

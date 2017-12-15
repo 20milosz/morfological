@@ -11,6 +11,11 @@ void createHostMatrix(Matrix *matrix, int numRows, int numColums, int size)
 	matrix->numRows = numRows;
 	matrix->numColumns = numColums;
 	matrix->elements = (uint8_t *)malloc(size);
+	if (matrix->elements == NULL)
+	{
+		fprintf(stderr, "Failed to allocate host matrix\n");
+		exit(EXIT_FAILURE);
+	}
 }
 void createDeviceMatrix(Matrix *matrix, int numRows, int numColums, int size)
 {
@@ -38,11 +43,11 @@ void showMatrix(Matrix A, char* name)
 		printf("\n");
 	}
 }
-void verifyHostAllocation(Matrix h_A)
+/*void verifyHostAllocation(Matrix h_A)
 {
 	if (h_A.elements == NULL)
 	{
 		fprintf(stderr, "Failed to allocate host matrix\n");
 		exit(EXIT_FAILURE);
 	}
-}
+}*/

@@ -6,43 +6,24 @@
 #include "device_launch_parameters.h"
 
 
-void copy(Matrix structuringElement)
-{
-	checkCudaErrors(cudaMemcpyToSymbol(structuringElements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), 0, cudaMemcpyHostToDevice));
-}
-
-void createStructuringElement(Matrix structuringElement)
-{
-	int i;
-	for (int column = 0; column < strucElDim; column++)
-	{
-		for (int row = 0; row < strucElDim; row++)
-		{
-			i = column + strucElDim*row;
-			if (row == strucElDim / 2 || column == strucElDim / 2)
-			{
-				structuringElement.elements[i] = (uint8_t)1;
-			}
-			else
-			{
-				structuringElement.elements[i] = (uint8_t)0;
-			}
-		}
-	}
-}
-
 __global__ void erosion_cuda(Matrix A, Matrix result)
 {
-	int column = threadIdx.x + strucElDim / 2;
+	int column = threadIdx.x + strucElDim / 2;		//indeks samego obrazu, nie indeksuje dodatkowej krawêdzi wype³nionej zerami
 	int row = threadIdx.y + strucElDim / 2;
 
-	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];
+	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];	//kafelek, zawiera przetwarzan¹ czêœæ obrazu plus dodatkow¹ krawêdŸ o szerokoœci strucElDim/2, 
+																						//pozwala to na pominiêcie instrukcji warunkowych
 
-	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];
+	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];	//skopiowanie do pamiêci wspo³dzielonej(kafelka)
+																																								//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
+																																								//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
+																																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
 	__syncthreads();
 
-	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)
+	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)		//aby nie przetwarzaæ krawêdzi po prawej stronie obrazu i na dole, inaczej mo¿na by wyjœæ poza obraz
 	{
+		//odpowiednia czêœæ obrazu jest kopiowana do subMatrix o wymiarze elementu strukturalnego, nastêpnie jest porównywana z elementem strukturalnym
+		//je¿eli jedynka elementu strukturalnego pokrywa siê z zerem subMatrix, piksel wynikowy ma wartoœæ 0, w przeciwnym wypadku 1
 		uint8_t subMatrix[strucElDim*strucElDim];
 		int index;
 		uint8_t CValue;
@@ -155,13 +136,86 @@ __global__ void dilatation_complement_cuda(Matrix A, Matrix B, Matrix result)
 	__syncthreads();
 }
 
+__global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
+{
+	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
+	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
+	unsigned int offset = 0; //to do kafelkow
+	unsigned int n = A.numColumns*B.numRows - 1;
+	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
+	unsigned int temp = 0;
+	while (id + offset < n) {
+		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
+			temp = 1; //mamy tutaj roznice
+		}
+		offset += tile; //iteruj do kolejnego kafelka
+	}
+	cache[threadIdx.x] = temp; //zapisz "najgorszy przypadek" (czyli 1 =  rozne piksele) do cache'a dla kazdego watku
+	__syncthreads();
 
+	//teraz prawdziwa redukcja, nie kafelkowa
+
+	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {// bierzemy polowe watkow i dzielimy przez dwa az dojdziemy do zera
+		if (threadIdx.x < s) { //bierzemy "polowe" ktora stanowi s
+							   //teraz dla kazdego watku wybieramy wartosc najwieksza, czyli 1, jezeli istnieje roznica w obrazkach pomiedzy naszym watkiem i tym "po drugiej stronie s"
+			cache[threadIdx.x] = MAX(cache[threadIdx.x], cache[threadIdx.x + s]);
+		}
+		__syncthreads();
+	}
+
+
+	//czana magia nad ktora tyle mi sie zeszlo...
+	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
+		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
+											  //		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
+		*maximum = cache[0]; //porownaj z innymi watkami "0" (czytaj w innym bloku)
+		atomicExch(mutex, 0);  // odblokuj "mutexa"
+	}
+	__syncthreads();
+}
+
+__global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
+{
+	int column = threadIdx.x + blockIdx.x*blockDim.x;
+	int row = threadIdx.y + blockIdx.y*blockDim.y;
+	if (column < A.numColumns && row < A.numRows)
+	{
+		int index = row * A.numColumns + column;
+		result.elements[index] = A.elements[index] * B.elements[index];
+
+	}
+
+}
+
+void copy(Matrix structuringElement)
+{
+	checkCudaErrors(cudaMemcpyToSymbol(structuringElements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), 0, cudaMemcpyHostToDevice));
+}
+
+void createStructuringElement(Matrix structuringElement)
+{
+	int i;
+	for (int column = 0; column < strucElDim; column++)
+	{
+		for (int row = 0; row < strucElDim; row++)
+		{
+			i = column + strucElDim*row;
+			if (row == strucElDim / 2 || column == strucElDim / 2)
+			{
+				structuringElement.elements[i] = (uint8_t)1;
+			}
+			else
+			{
+				structuringElement.elements[i] = (uint8_t)0;
+			}
+		}
+	}
+}
 
 Matrix* dilatation(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	Matrix d_A;
 	Matrix d_result;
 	createDeviceMatrix(&d_A, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
@@ -181,7 +235,6 @@ Matrix* erosion(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	Matrix d_A;
 	Matrix d_result;
 	createDeviceMatrix(&d_A, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
@@ -196,24 +249,12 @@ Matrix* erosion(Matrix A)
 	checkCudaErrors(cudaFree(d_result.elements));
 	return result;
 }
-__global__ void complement_cuda(Matrix A, Matrix B, Matrix result)
-{
-	int column = threadIdx.x + blockIdx.x*blockDim.x;
-	int row = threadIdx.y + blockIdx.y*blockDim.y;
-	if (column < A.numColumns && row < A.numRows)
-	{
-		int index = row * A.numColumns + column;
-		result.elements[index] = A.elements[index] * B.elements[index];
-
-	}
-
-}
 
 Matrix* complement(Matrix A, Matrix B)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
+
 	Matrix d_A;
 	Matrix d_B;
 	Matrix d_result;
@@ -238,7 +279,6 @@ Matrix* negation(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	int index;
 	for (int row = 0; row < A.numRows; row++)
 	{
@@ -254,8 +294,8 @@ Matrix* negation(Matrix A)
 
 Matrix* opening(Matrix A)
 {
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* resultErosion = (Matrix*)malloc(sizeof(Matrix));
+	Matrix* result;
+	Matrix* resultErosion;
 	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	createHostMatrixNoAllocation(resultErosion, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	resultErosion = erosion(A);
@@ -267,8 +307,8 @@ Matrix* opening(Matrix A)
 
 Matrix* closing(Matrix A)
 {
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* resultDilatation = (Matrix*)malloc(sizeof(Matrix));
+	Matrix* result;
+	Matrix* resultDilatation;
 	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	createHostMatrixNoAllocation(resultDilatation, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	resultDilatation = dilatation(A);
@@ -277,46 +317,6 @@ Matrix* closing(Matrix A)
 	free(resultDilatation);
 	return result;
 }
-
-__global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
-{
-	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
-	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
-	unsigned int offset = 0; //to do kafelkow
-	unsigned int n = A.numColumns*B.numRows - 1;
-	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
-	unsigned int temp =0;
-	while (id + offset < n) {
-		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
-			temp = 1; //mamy tutaj roznice
-		}
-		offset += tile; //iteruj do kolejnego kafelka
-	}
-	cache[threadIdx.x] = temp; //zapisz "najgorszy przypadek" (czyli 1 =  rozne piksele) do cache'a dla kazdego watku
-	__syncthreads();
-
-	//teraz prawdziwa redukcja, nie kafelkowa
-	
-	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {// bierzemy polowe watkow i dzielimy przez dwa az dojdziemy do zera
-		if (threadIdx.x < s) { //bierzemy "polowe" ktora stanowi s
-			//teraz dla kazdego watku wybieramy wartosc najwieksza, czyli 1, jezeli istnieje roznica w obrazkach pomiedzy naszym watkiem i tym "po drugiej stronie s"
-			cache[threadIdx.x] = MAX(cache[threadIdx.x], cache[threadIdx.x + s]);
-		}
-		__syncthreads();
-	}
-
-
-	//czana magia nad ktora tyle mi sie zeszlo...
-	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
-		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
-//		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
-		*maximum = cache[0]; //porownaj z innymi watkami "0" (czytaj w innym bloku)
-		atomicExch(mutex, 0);  // odblokuj "mutexa"
-	}
-	__syncthreads();
-}
-
-
 
 int checkIfEqual(Matrix A, Matrix B)
 {
@@ -388,7 +388,7 @@ Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 	checkCudaErrors(cudaFree(d_resultDil.elements));
 	return result;
 }
-
+/*
 Matrix* reconstruction(Matrix mask, Matrix marker)
 {
 
@@ -427,24 +427,8 @@ Matrix* reconstruction(Matrix mask, Matrix marker)
 
 	return marker2;
 }
-
-
-Matrix* openingByReconstruction(Matrix A)
-{
-
-	Matrix* resultEr = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	createHostMatrixNoAllocation(resultEr, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	resultEr = erosion(A);
-	result = reconstruction_cuda(A, *resultEr);
-	free(resultEr->elements);
-	free(resultEr);
-	return result;
-}
-
-
-Matrix* openingByReconstruction2(Matrix mask)
+*/
+Matrix* openingByReconstruction(Matrix mask)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
@@ -465,7 +449,6 @@ Matrix* openingByReconstruction2(Matrix mask)
 	createDeviceMatrix(&d_marker2, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
 	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
-	//checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));
 	checkCudaErrors(cudaMemset(d_mutex, 0, sizeof(int)));
 
 	dim3 threads(blockD + strucElDim - 1, blockD + strucElDim - 1);
@@ -478,11 +461,8 @@ Matrix* openingByReconstruction2(Matrix mask)
 	erosion_cuda << <grid, threads >> > (d_mask, d_marker1);
 	while (h_max == 1)
 	{
-	//for (int i = 0; i < 3; i++)
-		//{
-			dilatation_complement_cuda << < grid, threads >> > (d_marker1, d_mask, d_marker2);
-			dilatation_complement_cuda << < grid, threads >> > (d_marker2, d_mask, d_marker1);
-		//}
+		dilatation_complement_cuda << < grid, threads >> > (d_marker1, d_mask, d_marker2);
+		dilatation_complement_cuda << < grid, threads >> > (d_marker2, d_mask, d_marker1);
 		checkIfEqual_cuda << < gridEq, blockEq, shMemEq >> > (d_marker1, d_marker2, d_max, d_mutex);
 		cudaMemcpy(&h_max, d_max, sizeof(unsigned int), cudaMemcpyDeviceToHost);//zgraj max
 	}
