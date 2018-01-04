@@ -237,7 +237,6 @@ Matrix* negation(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	int index;
 	for (int row = 0; row < A.numRows; row++)
 	{
@@ -253,8 +252,8 @@ Matrix* negation(Matrix A)
 
 Matrix* opening(Matrix A)
 {
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* resultErosion = (Matrix*)malloc(sizeof(Matrix));
+	Matrix* result;
+	Matrix* resultErosion;
 	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	createHostMatrixNoAllocation(resultErosion, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	resultErosion = erosion(A);
@@ -266,8 +265,8 @@ Matrix* opening(Matrix A)
 
 Matrix* closing(Matrix A)
 {
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* resultDilatation = (Matrix*)malloc(sizeof(Matrix));
+	Matrix* result;
+	Matrix* resultDilatation;
 	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	createHostMatrixNoAllocation(resultDilatation, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
 	resultDilatation = dilatation(A);
