@@ -6,6 +6,51 @@
 #include "device_launch_parameters.h"
 
 
+__global__ void dilatation_complement_cuda(Matrix A, Matrix B, Matrix result)
+{
+	int column = threadIdx.x + strucElDim / 2;		//indeks samego obrazu, nie indeksuje dodatkowej krawêdzi wype³nionej zerami
+	int row = threadIdx.y + strucElDim / 2;
+
+	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];	//kafelek, zawiera przetwarzan¹ czêœæ obrazu plus dodatkow¹ krawêdŸ o szerokoœci strucElDim/2, 
+																						//pozwala to na pominiêcie instrukcji warunkowych
+
+	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];	//skopiowanie do pamiêci wspo³dzielonej(kafelka)
+																																								//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
+																																								//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
+																																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
+
+	__syncthreads();
+
+	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)		//aby nie przetwarzaæ krawêdzi po prawej stronie obrazu i na dole, inaczej mo¿na by wyjœæ poza obraz
+	{
+		//odpowiednia czêœæ obrazu jest kopiowana do subMatrix o wymiarze elementu strukturalnego, nastêpnie jest porównywana z elementem strukturalnym
+		//je¿eli jedynka elementu strukturalnego pokrywa siê z jedynka subMatrix, piksel wynikowy ma wartoœæ 1, w przeciwnym wypadku 0
+		uint8_t subMatrix[strucElDim*strucElDim];
+		int index;
+		uint8_t CValue;
+
+		index = row * blockDim.x + column;
+		CValue = 0;
+
+		for (int i = -(strucElDim / 2); i <= strucElDim / 2; i++)
+		{
+			for (int j = -(strucElDim / 2); j <= strucElDim / 2; j++)
+			{
+				subMatrix[j + strucElDim / 2 + strucElDim * (i + strucElDim / 2)] = dilTile[index + j + i*blockDim.x];
+			}
+		}
+		for (int i = 0; i < strucElDim*strucElDim; i++)
+		{
+			if (structuringElements[i] * subMatrix[i] == 1)
+			{
+				CValue = 1;
+			}
+		}
+		result.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y] = CValue*B.elements[threadIdx.x + strucElDim / 2 + A.numColumns*(threadIdx.y + strucElDim / 2) + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];
+	}
+	__syncthreads();
+}
+
 
 __global__ void erosion_cuda(Matrix A, Matrix result)
 {
@@ -292,6 +337,7 @@ int checkIfEqual(Matrix A, Matrix B)
 	}
 	return isEqual;
 }
+
 
 Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 {
