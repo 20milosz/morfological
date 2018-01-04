@@ -38,8 +38,8 @@ int main()
 	// wstepnie przygotowanie obrazu
 	// wykonane operacje morfologiczne w danym przypdaku maja sens je¿eli pracuje siê na obrazie zanegowanym
 	resultNegation = negation(bImage);
-	
-	
+
+
 	resultMorfOp = dilatation(*resultNegation);
 	result = negation(*resultMorfOp);
 	convertBinaryImageTOBitmapUsingHeader(result, bmp->hp, &res_bmp);

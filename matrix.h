@@ -20,6 +20,7 @@ void createHostMatrix(Matrix *matrix, int numRows, int numColums, int size);
 void createDeviceMatrix(Matrix *matrix, int numRows, int numColums, int size);
 void createHostMatrixNoAllocation(Matrix *matrix, int numRows, int numColums, int size);
 void showMatrix(Matrix A, char* name);
+void verifyHostAllocation(Matrix h_A);
 
 
 #endif
