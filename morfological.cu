@@ -437,7 +437,7 @@ Matrix* reconstruction(Matrix mask, Matrix marker)
 }
 
 
-Matrix* openingByReconstruction(Matrix A)
+/*Matrix* openingByReconstruction(Matrix A)
 {
 
 	Matrix* resultEr = (Matrix*)malloc(sizeof(Matrix));
@@ -448,5 +448,55 @@ Matrix* openingByReconstruction(Matrix A)
 	result = reconstruction_cuda(A, *resultEr);
 	free(resultEr->elements);
 	free(resultEr);
+	return result;
+}*/
+
+Matrix* openingByReconstruction(Matrix mask)
+{
+	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
+	createHostMatrix(result, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+
+	Matrix d_mask;
+	Matrix d_marker1;
+	Matrix d_marker2;
+
+	unsigned int *d_max;
+	int *d_mutex;
+	unsigned int h_max = 1;
+
+	checkCudaErrors(cudaMalloc((void**)&d_max, sizeof(unsigned int)));
+	checkCudaErrors(cudaMalloc((void**)&d_mutex, sizeof(int)));
+
+	createDeviceMatrix(&d_mask, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	createDeviceMatrix(&d_marker1, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	createDeviceMatrix(&d_marker2, mask.numRows, mask.numColumns, mask.numColumns*mask.numRows * sizeof(uint8_t));
+	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
+
+
+	checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));
+	checkCudaErrors(cudaMemset(d_mutex, 0, sizeof(int)));
+
+	dim3 threads(blockD + strucElDim - 1, blockD + strucElDim - 1);
+	dim3 grid(mask.numColumns / blockD, mask.numRows / blockD);
+	
+	dim3 gridEq = 256; //jeden wymiar, wiecej i tak nic nam nie da
+	dim3 blockEq = 256; //jeden wymiar, wiecej i tak nic nam nie da //256 watkow
+	unsigned int shMemEq = 256 * sizeof(unsigned int);  //shared memory == block size* int
+	int isEqual = 1;
+	erosion_cuda << <grid, threads >> > (d_mask, d_marker1);
+	while (h_max == 1)
+	{
+		dilatation_complement_cuda << < grid, threads >> > (d_marker1, d_mask, d_marker2);
+		dilatation_complement_cuda << < grid, threads >> > (d_marker2, d_mask, d_marker1);
+
+		checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));//zeruj max
+		checkIfEqual_cuda << < gridEq, blockEq, shMemEq >> > (d_marker1, d_marker2, d_max, d_mutex);
+		cudaMemcpy(&h_max, d_max, sizeof(unsigned int), cudaMemcpyDeviceToHost);//zgraj max
+	}
+
+	checkCudaErrors(cudaMemcpy(result->elements, d_marker1.elements, d_marker1.numColumns*d_marker1.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+	checkCudaErrors(cudaFree(d_mask.elements));
+	checkCudaErrors(cudaFree(d_marker1.elements));
+	checkCudaErrors(cudaFree(d_marker2.elements));
 	return result;
 }
