@@ -132,6 +132,8 @@ __global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int
 }
 
 
+
+
 void copy(Matrix structuringElement)
 {
 	checkCudaErrors(cudaMemcpyToSymbol(structuringElements, structuringElement.elements, strucElDim*strucElDim * sizeof(uint8_t), 0, cudaMemcpyHostToDevice));
@@ -156,7 +158,6 @@ void createStructuringElement(Matrix structuringElement)
 		}
 	}
 }
-
 
 Matrix* dilatation(Matrix A)
 {
