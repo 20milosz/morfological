@@ -162,7 +162,6 @@ Matrix* dilatation(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	Matrix d_A;
 	Matrix d_result;
 	createDeviceMatrix(&d_A, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
@@ -170,7 +169,7 @@ Matrix* dilatation(Matrix A)
 	checkCudaErrors(cudaMemcpy(d_A.elements, A.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	dim3 threads1(blockD + strucElDim - 1, blockD + strucElDim - 1);
 	dim3 grid1(A.numColumns / blockD, A.numRows / blockD);
-	dilatation_cuda <<<grid1, threads1 >>> (d_A, d_result);
+	dilatation_cuda << <grid1, threads1 >> > (d_A, d_result);
 	checkCudaErrors(cudaGetLastError());
 	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 	checkCudaErrors(cudaFree(d_A.elements));
@@ -182,7 +181,6 @@ Matrix* erosion(Matrix A)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
 	Matrix d_A;
 	Matrix d_result;
 	createDeviceMatrix(&d_A, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
@@ -214,7 +212,7 @@ Matrix* complement(Matrix A, Matrix B)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
 	createHostMatrix(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	verifyHostAllocation(*result);
+
 	Matrix d_A;
 	Matrix d_B;
 	Matrix d_result;
@@ -225,7 +223,7 @@ Matrix* complement(Matrix A, Matrix B)
 	checkCudaErrors(cudaMemcpy(d_B.elements, B.elements, B.numColumns*B.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
 	dim3 threads(blockD + strucElDim - 1, blockD + strucElDim - 1);
-	dim3 grid((A.numColumns + threads.x-1) / threads.x, (A.numRows+threads.y-1) / threads.y);
+	dim3 grid((A.numColumns + threads.x - 1) / threads.x, (A.numRows + threads.y - 1) / threads.y);
 	complement_cuda << <grid, threads >> > (d_A, d_B, d_result);
 	checkCudaErrors(cudaMemcpy(result->elements, d_result.elements, A.numColumns*A.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 	checkCudaErrors(cudaFree(d_A.elements));
