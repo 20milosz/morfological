@@ -437,20 +437,6 @@ Matrix* reconstruction(Matrix mask, Matrix marker)
 }
 
 
-/*Matrix* openingByReconstruction(Matrix A)
-{
-
-	Matrix* resultEr = (Matrix*)malloc(sizeof(Matrix));
-	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
-	createHostMatrixNoAllocation(resultEr, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	createHostMatrixNoAllocation(result, A.numRows, A.numColumns, A.numColumns*A.numRows * sizeof(uint8_t));
-	resultEr = erosion(A);
-	result = reconstruction_cuda(A, *resultEr);
-	free(resultEr->elements);
-	free(resultEr);
-	return result;
-}*/
-
 Matrix* openingByReconstruction(Matrix mask)
 {
 	Matrix* result = (Matrix*)malloc(sizeof(Matrix));
