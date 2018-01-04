@@ -51,16 +51,23 @@ __global__ void erosion_cuda(Matrix A, Matrix result)
 
 __global__ void dilatation_cuda(Matrix A, Matrix result)
 {
-	int column = threadIdx.x + strucElDim / 2;
+	int column = threadIdx.x + strucElDim / 2;		//indeks samego obrazu, nie indeksuje dodatkowej krawêdzi wype³nionej zerami
 	int row = threadIdx.y + strucElDim / 2;
 
-	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];
+	__shared__ uint8_t dilTile[(blockD + strucElDim - 1)*(blockD + strucElDim - 1)];	//kafelek, zawiera przetwarzan¹ czêœæ obrazu plus dodatkow¹ krawêdŸ o szerokoœci strucElDim/2, 
+																						//pozwala to na pominiêcie instrukcji warunkowych
 
-	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];
+	dilTile[threadIdx.x + blockDim.x*threadIdx.y] = A.elements[threadIdx.x + A.numColumns*threadIdx.y + blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y];	//skopiowanie do pamiêci wspo³dzielonej(kafelka)
+																																								//threadIdx.x + A.numColumns*threadIdx.y  odpowiada indeksowi w kafelku
+																																								//blockIdx.x*blockD + A.numColumns*blockD*blockIdx.y  przesuniêcie o szerokoœæ przetwarzanej czêœci obrazu w kafelku
+																																								//NIE O ROZMIAR KAFELKA!!! powoduje to nak³adanie siê kafelków
+
 	__syncthreads();
 
-	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)
+	if (column < blockDim.x - strucElDim / 2 && row < blockDim.y - strucElDim / 2)		//aby nie przetwarzaæ krawêdzi po prawej stronie obrazu i na dole, inaczej mo¿na by wyjœæ poza obraz
 	{
+		//odpowiednia czêœæ obrazu jest kopiowana do subMatrix o wymiarze elementu strukturalnego, nastêpnie jest porównywana z elementem strukturalnym
+		//je¿eli jedynka elementu strukturalnego pokrywa siê z jedynka subMatrix, piksel wynikowy ma wartoœæ 1, w przeciwnym wypadku 0
 		uint8_t subMatrix[strucElDim*strucElDim];
 		int index;
 		uint8_t CValue;
@@ -84,6 +91,46 @@ __global__ void dilatation_cuda(Matrix A, Matrix result)
 	}
 	__syncthreads();
 }
+
+__global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
+{
+
+	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
+	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
+	unsigned int offset = 0; //to do kafelkow
+	unsigned int n = A.numColumns*B.numRows - 1;
+	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
+
+	unsigned int temp = 0;
+	while (id + offset < n) {
+		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
+			temp = 1; //mamy tutaj roznice
+		}
+		offset += tile; //iteruj do kolejnego kafelka
+	}
+	cache[threadIdx.x] = temp; //zapisz "najgorszy przypadek" (czyli 1 =  rozne piksele) do cache'a dla kazdego watku
+	__syncthreads();
+
+	//teraz prawdziwa redukcja, nie kafelkowa
+
+	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {// bierzemy polowe watkow i dzielimy przez dwa az dojdziemy do zera
+		if (threadIdx.x < s) { //bierzemy "polowe" ktora stanowi s
+							   //teraz dla kazdego watku wybieramy wartosc najwieksza, czyli 1, jezeli istnieje roznica w obrazkach pomiedzy naszym watkiem i tym "po drugiej stronie s"
+			cache[threadIdx.x] = MAX(cache[threadIdx.x], cache[threadIdx.x + s]);
+		}
+		__syncthreads();
+	}
+
+
+	//czana magia nad ktora tyle mi sie zeszlo...
+	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
+		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
+		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
+		atomicExch(mutex, 0);  // odblokuj "mutexa"
+	}
+	__syncthreads();
+}
+
 
 void copy(Matrix structuringElement)
 {
@@ -232,44 +279,6 @@ Matrix* closing(Matrix A)
 	return result;
 }
 
-__global__ void checkIfEqual_cuda(Matrix A, Matrix B, unsigned int *maximum, int *mutex)
-{
-	
-	unsigned int tile = gridDim.x*blockDim.x; //tyle mozemy policzyc "na raz" (taki zakres liczb mamy na karcie) wiec "kafelkujemy" takim rozmiarem
-	unsigned int id = threadIdx.x + blockIdx.x*blockDim.x; //aktualny id watku
-	unsigned int offset = 0; //to do kafelkow
-	unsigned int n = A.numColumns*B.numRows - 1;
-	extern __shared__ unsigned int cache[]; //tutaj bedziemy trzymac aktualne dane z redukcji, rozmiar = ilosc watkow
-	
-	unsigned int temp =0;
-	while (id + offset < n) {
-		if (A.elements[id + offset] != B.elements[id + offset]) { //NAND A&B dla elementow co "kafelek"
-			temp = 1; //mamy tutaj roznice
-		}
-		offset += tile; //iteruj do kolejnego kafelka
-	}
-	cache[threadIdx.x] = temp; //zapisz "najgorszy przypadek" (czyli 1 =  rozne piksele) do cache'a dla kazdego watku
-	__syncthreads();
-
-	//teraz prawdziwa redukcja, nie kafelkowa
-	
-	for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {// bierzemy polowe watkow i dzielimy przez dwa az dojdziemy do zera
-		if (threadIdx.x < s) { //bierzemy "polowe" ktora stanowi s
-			//teraz dla kazdego watku wybieramy wartosc najwieksza, czyli 1, jezeli istnieje roznica w obrazkach pomiedzy naszym watkiem i tym "po drugiej stronie s"
-			cache[threadIdx.x] = MAX(cache[threadIdx.x], cache[threadIdx.x + s]);
-		}
-		__syncthreads();
-	}
-
-
-	//czana magia nad ktora tyle mi sie zeszlo...
-	if (threadIdx.x == 0) { // jezeli jestesmy w watku "0"
-		while (atomicCAS(mutex, 0, 1) != 0);  //zablokuj "mutexa
-		*maximum = MAX(*maximum, cache[0]); //porownaj z innymi watkami "0" (czytaj w innym bloku)
-		atomicExch(mutex, 0);  // odblokuj "mutexa"
-	}
-	__syncthreads();
-}
 
 
 
