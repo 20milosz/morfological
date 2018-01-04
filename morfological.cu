@@ -363,7 +363,7 @@ Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 	checkCudaErrors(cudaMemcpy(d_mask.elements, mask.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_marker1.elements, marker.elements, mask.numColumns*mask.numRows * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
-	
+
 
 	checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));
 	checkCudaErrors(cudaMemset(d_mutex, 0, sizeof(int)));
@@ -372,23 +372,23 @@ Matrix* reconstruction_cuda(Matrix mask, Matrix marker)
 	dim3 gridDil(mask.numColumns / blockD, mask.numRows / blockD);
 	dim3 threadsComp(blockD + strucElDim - 1, blockD + strucElDim - 1);
 	dim3 gridComp((mask.numColumns + threadsComp.x - 1) / threadsComp.x, (mask.numRows + threadsComp.y - 1) / threadsComp.y);
-	
+
 	dim3 gridEq = 256; //jeden wymiar, wiecej i tak nic nam nie da
 	dim3 blockEq = 256; //jeden wymiar, wiecej i tak nic nam nie da //256 watkow
-	unsigned int shMemEq = 256 *sizeof(unsigned int);  //shared memory == block size* int
-	int isEqual=1;
-	while(h_max == 1)
+	unsigned int shMemEq = 256 * sizeof(unsigned int);  //shared memory == block size* int
+	int isEqual = 1;
+	while (h_max == 1)
 	{
-		dilatation_cuda <<< gridDil, threadsDil >>> (d_marker1, d_resultDil);
-		complement_cuda <<< gridComp, threadsComp >>> (d_resultDil, d_mask, d_marker2);
-		dilatation_cuda <<< gridDil, threadsDil >>> (d_marker2, d_resultDil);
-		complement_cuda <<< gridComp, threadsComp >>> (d_resultDil, d_mask, d_marker1);
+		dilatation_cuda << < gridDil, threadsDil >> > (d_marker1, d_resultDil);
+		complement_cuda << < gridComp, threadsComp >> > (d_resultDil, d_mask, d_marker2);
+		dilatation_cuda << < gridDil, threadsDil >> > (d_marker2, d_resultDil);
+		complement_cuda << < gridComp, threadsComp >> > (d_resultDil, d_mask, d_marker1);
 
 		checkCudaErrors(cudaMemset(d_max, 0, sizeof(unsigned int)));//zeruj max
-		checkIfEqual_cuda <<< gridEq, blockEq, shMemEq >>> (d_marker1, d_marker2, d_max, d_mutex);
+		checkIfEqual_cuda << < gridEq, blockEq, shMemEq >> > (d_marker1, d_marker2, d_max, d_mutex);
 		cudaMemcpy(&h_max, d_max, sizeof(unsigned int), cudaMemcpyDeviceToHost);//zgraj max
 	}
-	
+
 	checkCudaErrors(cudaMemcpy(result->elements, d_marker1.elements, d_marker1.numColumns*d_marker1.numRows * sizeof(uint8_t), cudaMemcpyDeviceToHost));
 	checkCudaErrors(cudaFree(d_mask.elements));
 	checkCudaErrors(cudaFree(d_marker1.elements));
